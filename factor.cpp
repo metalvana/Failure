@@ -18,7 +18,7 @@ struct work_t {
 };
 
 struct result_t {
-    char digits[GRAIN][NUM_SIZE] = {0};
+    char digits[GRAIN][NUM_SIZE];
 };
 
 class MW : public Master_Worker {
@@ -103,11 +103,13 @@ private:
 
 int main(int argc, char *argv[]) {
 
-    int mode = atoi(argv[argc-1]);
+    if (argc < 3)
+        cout << "Please provide MODE and N" << endl;
+    int mode = atoi(argv[1]);
 
     MPI::Init (argc, argv);
 
-    Master_Worker *mw = new MW(sizeof(work_t), sizeof(result_t), argv[argc-2], mode);
+    Master_Worker *mw = new MW(sizeof(work_t), sizeof(result_t), argv[2], mode);
     
 
     mw->Run();

@@ -26,15 +26,6 @@ public:
 
 protected:
     vector<work_t*> wPool;
-    //work queue for sending
-    queue<int> wQue;
-    //vector act as map between workInd and time
-    vector<time_t> timeList;
-    //vector act as map between worker and computing work
-    vector<int> workMap;
-    //see which worker failed
-    vector<bool> vWorker;
-    
     result_t* finalR;
     
     //construct pList and wPool based on the input value
@@ -50,9 +41,20 @@ private:
     int rank, sz;
     int work_sz, result_sz;
     int mode;
-    const int MASTER_RANK = 0;
+    int MASTER_RANK;
+    int BACKUP_MASTER;
+
     MPI::Status status;
     MPI::Request sendRq, recvRq;
+
+    //work queue for sending
+    queue<int> wQue;
+    //vector act as map between workInd and time
+    vector<time_t> timeList;
+    //vector act as map between worker and computing work
+    vector<int> workMap;
+    //see which worker failed
+    vector<bool> vWorker;
 
     void directMode();
     void assignMode();

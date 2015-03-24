@@ -14,12 +14,18 @@
 
 using namespace std;
 
-#define PVAL 0.7
+#define PVAL 0.6 
 
 //implementation of MPI_Run
 
-Master_Worker::Master_Worker() {}
-Master_Worker::Master_Worker(int wk_sz, int rs_sz, int m) : work_sz(wk_sz), result_sz(rs_sz), mode(m) {}
+Master_Worker::Master_Worker() {
+    MASTER_RANK = 0;
+    BACKUP_MASTER = 1;
+}
+Master_Worker::Master_Worker(int wk_sz, int rs_sz, int m) : work_sz(wk_sz), result_sz(rs_sz), mode(m) {
+    MASTER_RANK = 0;
+    BACKUP_MASTER = 1;
+}
 
 //declaration of other function
 void F_Send(void *buf, int count, MPI_Datatype datatype, int dest, int tag, int rank);
@@ -28,7 +34,7 @@ bool random_fail(int rank);
 void Master_Worker::Run(){
     //have the rank, have the size, devide into 0 and 1
     sz = MPI::COMM_WORLD.Get_size();
-    if (sz < 2) {
+    if (sz < 3) {
         cout << "Please assign at least two processors." << endl;
         exit(0);
     }
@@ -69,7 +75,7 @@ void Master_Worker::directMode() {
     int tag=1;
     vector<result_t*> rList;
     if(rank == MASTER_RANK){
-        for(int i = 1; i < sz; i++){
+        for(int i = 2; i < sz; i++){
             result_t* tmpR = (result_t*) malloc(result_sz);
             MPI::COMM_WORLD.Recv(tmpR, result_sz, MPI::BYTE, i, tag);
             rList.push_back(tmpR);
@@ -99,8 +105,6 @@ void Master_Worker::directMode() {
 }
 
 void Master_Worker::assignMode() {
-    int n = wPool.size();
-    int wNum = sz-1;
     vector<result_t*> rList;
     result_t* tmpR;
     work_t* tmpW;
@@ -109,39 +113,32 @@ void Master_Worker::assignMode() {
         create();
         Init();
         int n = wPool.size();
-        int wNum = sz-1;
-        int ind;
+        int wNum = sz-2;
         //send sequentially to all workers, update send time
-        for(ind = 0; ind < wNum && ind < n; ind++){
+        for(int ind = 0; ind < wNum && ind < n; ind++){
             int exit = 0;
-            MPI::COMM_WORLD.Send(&exit, 1, MPI::INT, ind+1, 0);
+            MPI::COMM_WORLD.Send(&exit, 1, MPI::INT, ind+2, 0);
             tmpW = wPool[wQue.front()];
-            MPI::COMM_WORLD.Send(tmpW, work_sz, MPI::BYTE, ind+1, 1);
+            MPI::COMM_WORLD.Send(tmpW, work_sz, MPI::BYTE, ind+2, 1);
             //update map
-            workMap[ind+1] = wQue.front();
+            workMap[ind+2] = wQue.front();
             wQue.pop();
             //update the time Table
             time_t tmpT; time(&tmpT);
-            cout << "tmp0: " << tmpT << endl;
-            timeList[ind+1] = tmpT;
+            timeList[ind+2] = tmpT;
         }
         //start to wait for responce,
         //****everytime receiving, check out failure****//
         int cnt = 0;
         time_t checkP;
         time(&checkP);
-        cout << wQue.size() << endl;
         int recvCnt = 0;
-        cout << "n size: " << n << endl;
         while(recvCnt < n){
             /******* check timeList, see if any worker died *********/
             time_t curT; time(&curT);
-            cout << "curT: " << curT << endl;
-            cout << "checkP: " << checkP << endl;
             if(curT - checkP > 1){
-                for(int i = 1; i < sz; i++){
+                for(int i = 2; i < sz; i++){
                     time_t tmpT = timeList[i];
-                    cout << "tmpT1: " << tmpT << endl;
                     if(tmpT < checkP){
                         //worker death detected, push the sent work back to wQue
                         cout << "worker died with number: " << i << endl;
@@ -160,7 +157,7 @@ void Master_Worker::assignMode() {
             bool suc = false;
             time_t startT; time(&startT);
             curT = startT;
-            while(!suc && (curT-startT < 10)){
+            while(!suc && (curT-startT < 2)){
                 suc = recvRq.Test(status);
                 //cout << "this suc: " << suc << endl;
                 if(suc) break;
@@ -171,7 +168,7 @@ void Master_Worker::assignMode() {
                 //assume all worker die, cout msg and exit
                 //check valid count;
                 int wCnt = 0;
-                for(int i = 0; i < vWorker.size(); i++){
+                for(int i = 2; i < vWorker.size(); i++){
                     if(vWorker[i]) wCnt++;
                 }
                 if(wCnt) continue;
@@ -182,16 +179,16 @@ void Master_Worker::assignMode() {
                 rList.push_back(newR);
                 recvCnt++;
                 int tmpTar = status.Get_source();
+                //check if tmpTar already died, if so, continue
+                if(!vWorker[tmpTar]) continue;
                 //see if work left
                 if(!wQue.empty()){
                     tmpW = wPool[wQue.front()];
                     int tmpTar = status.Get_source();
-                    cout << "tmpTar: " << tmpTar << endl;
                     int exit = 0;
                     MPI::COMM_WORLD.Send(&exit, 1, MPI::INT, tmpTar, 0);
                     MPI::COMM_WORLD.Send(tmpW, work_sz, MPI::BYTE, tmpTar, 1);
                     time_t tmpT; time(&tmpT);
-                    cout << "tmpT2: " << tmpT << endl;
                     timeList[tmpTar] = tmpT;
                     workMap[tmpTar] = wQue.front();
                     wQue.pop();
@@ -200,14 +197,14 @@ void Master_Worker::assignMode() {
             }
         }
         //send msgs to stop workers
-        for(int i = 1; i <= wNum; i++){
+        for(int i = 1; i <= wNum+1; i++){
             if(vWorker[i]){
                 int exit = 1;
-                cout << "here" << endl;
                 MPI::COMM_WORLD.Send(&exit, 1, MPI::INT, i, 0);
             }
         }
         result(rList, finalR);
+        cout << "Master finished" << endl;
     }
     else{
         //get work and send it back
@@ -217,7 +214,7 @@ void Master_Worker::assignMode() {
             MPI::COMM_WORLD.Recv(&exit, 1, MPI::INT, MPI::ANY_SOURCE, 0);
             tmpTar = status.Get_source();
             if(exit){
-                cout << "fuck" << endl;
+                cout << "Processor " << rank << " completed." << endl;
                 break;
             }
             work_t* newW = (work_t*) malloc(work_sz);
@@ -255,8 +252,8 @@ bool Master_Worker::isMaster() {
 void F_Send(void *buf, int count, MPI_Datatype datatype, int dest, int tag, int rank)
 {
     if (random_fail(rank)) {
-        cout << "I am rank " << rank << " and I am dead! " << endl;
         MPI_Finalize();
+        cout << "Worker failed with " << rank << endl;
         exit (0);
     } else {
         MPI::COMM_WORLD.Send(buf, count, datatype, dest, tag);
@@ -270,7 +267,6 @@ bool random_fail(int rank){
     cout << "time: " << ticks << endl;*/
     srand(time(0)*rank*171);
     double tmpV = (double)rand()/RAND_MAX;
-    cout << "tmpV: " << tmpV << endl;
     return (tmpV > PVAL);
 }
 
