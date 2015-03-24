@@ -32,6 +32,8 @@ protected:
     vector<time_t> timeList;
     //vector act as map between worker and computing work
     vector<int> workMap;
+    //see which worker failed
+    vector<bool> vWorker;
     
     result_t* finalR;
     

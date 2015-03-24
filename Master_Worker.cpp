@@ -14,7 +14,7 @@
 
 using namespace std;
 
-#define PVAL 0.6
+#define PVAL 0.7
 
 //implementation of MPI_Run
 
@@ -59,6 +59,10 @@ void Master_Worker::Init(){
     //update workMap;
     vector<int> tmpVec(sz, -1);
     workMap = tmpVec;
+    //update vWorker
+    for(int i = 0; i < sz; i++){
+        vWorker.push_back(1);
+    }
 }
 
 void Master_Worker::directMode() {
@@ -118,6 +122,7 @@ void Master_Worker::assignMode() {
             wQue.pop();
             //update the time Table
             time_t tmpT; time(&tmpT);
+            cout << "tmp0: " << tmpT << endl;
             timeList[ind+1] = tmpT;
         }
         //start to wait for responce,
@@ -132,15 +137,17 @@ void Master_Worker::assignMode() {
             /******* check timeList, see if any worker died *********/
             time_t curT; time(&curT);
             cout << "curT: " << curT << endl;
-            if(curT - checkP > 5){
-                cout << "in here" << endl;
+            cout << "checkP: " << checkP << endl;
+            if(curT - checkP > 1){
                 for(int i = 1; i < sz; i++){
                     time_t tmpT = timeList[i];
-                    cout << "tmpT: " << tmpT << endl;
+                    cout << "tmpT1: " << tmpT << endl;
                     if(tmpT < checkP){
                         //worker death detected, push the sent work back to wQue
                         cout << "worker died with number: " << i << endl;
                         wQue.push(workMap[i]);
+                        //set vWorker
+                        vWorker[i] = 0;
                     }
                 }
                 checkP = curT;
@@ -154,28 +161,37 @@ void Master_Worker::assignMode() {
             time_t startT; time(&startT);
             curT = startT;
             while(!suc && (curT-startT < 10)){
-                suc = recvRq.Test();
-                cout << "this suc: " << suc << endl;
+                suc = recvRq.Test(status);
+                //cout << "this suc: " << suc << endl;
                 if(suc) break;
                 time(&curT);
-                this_thread::sleep_for (chrono::seconds(1));
+                this_thread::sleep_for (chrono::milliseconds(100));
             }
             if(!suc){
                 //assume all worker die, cout msg and exit
+                //check valid count;
+                int wCnt = 0;
+                for(int i = 0; i < vWorker.size(); i++){
+                    if(vWorker[i]) wCnt++;
+                }
+                if(wCnt) continue;
                 cout << "all workers died!" << endl;
                 exit(0);
             }
             else{
                 rList.push_back(newR);
                 recvCnt++;
+                int tmpTar = status.Get_source();
                 //see if work left
                 if(!wQue.empty()){
                     tmpW = wPool[wQue.front()];
                     int tmpTar = status.Get_source();
+                    cout << "tmpTar: " << tmpTar << endl;
                     int exit = 0;
                     MPI::COMM_WORLD.Send(&exit, 1, MPI::INT, tmpTar, 0);
                     MPI::COMM_WORLD.Send(tmpW, work_sz, MPI::BYTE, tmpTar, 1);
                     time_t tmpT; time(&tmpT);
+                    cout << "tmpT2: " << tmpT << endl;
                     timeList[tmpTar] = tmpT;
                     workMap[tmpTar] = wQue.front();
                     wQue.pop();
@@ -185,11 +201,12 @@ void Master_Worker::assignMode() {
         }
         //send msgs to stop workers
         for(int i = 1; i <= wNum; i++){
-            int exit = 1;
-            cout << "here" << endl;
-            MPI::COMM_WORLD.Send(&exit, 1, MPI::INT, i, 0);
+            if(vWorker[i]){
+                int exit = 1;
+                cout << "here" << endl;
+                MPI::COMM_WORLD.Send(&exit, 1, MPI::INT, i, 0);
+            }
         }
-        cout << "end" << endl;
         result(rList, finalR);
     }
     else{
@@ -248,11 +265,12 @@ void F_Send(void *buf, int count, MPI_Datatype datatype, int dest, int tag, int 
 
 //int randCnt = 0;
 bool random_fail(int rank){
-    //cout << randCnt << endl;
-    srand(time(0)*rank*163);
+    /*auto timePnt = chrono::high_resolution_clock::now();
+    auto ticks = chrono::duration_cast<chrono::microseconds>(timePnt-0);
+    cout << "time: " << ticks << endl;*/
+    srand(time(0)*rank*171);
     double tmpV = (double)rand()/RAND_MAX;
     cout << "tmpV: " << tmpV << endl;
-    cout << "big or not: " << (tmpV > PVAL) << endl;
     return (tmpV > PVAL);
 }
 
