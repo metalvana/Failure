@@ -14,7 +14,7 @@
 
 using namespace std;
 
-#define PVAL 0.2
+#define PVAL 0.9
 
 //implementation of MPI_Run
 
@@ -192,7 +192,6 @@ void Master_Worker::assignMode() {
                     exit(0);
                 }
                 int exit = 0;
-                cout << "new tar: " << tmpTar << " with new work: " << wQue.front() << endl;
                 MPI::COMM_WORLD.Send(&exit, 1, MPI::INT, tmpTar, 0);
                 MPI::COMM_WORLD.Send(tmpW, work_sz, MPI::BYTE, tmpTar, 1);
                 time_t tmpT; time(&tmpT);
@@ -215,11 +214,12 @@ void Master_Worker::assignMode() {
         cout << "Processor " << rank << " completed." << endl;
     }
     else if (rank == BACKUP_MASTER) {
-        /*create();
+        create();
         Init();
         time_t check_point, cur_time;
         int que[sz];
         int isExit = 0;
+        bool masterDied = false;
         recvRq = MPI::COMM_WORLD.Irecv(&isExit, 1, MPI::INT, MASTER_RANK, 0);
         while (1) {
             MPI::Request r1, r2, r3, r4;
@@ -227,17 +227,18 @@ void Master_Worker::assignMode() {
             r2 = MPI::COMM_WORLD.Irecv(workMap, sz, MPI::INT, MASTER_RANK, 2);
             r3 = MPI::COMM_WORLD.Irecv(vWorker, sz, MPI::INT, MASTER_RANK, 2);
             r4 = MPI::COMM_WORLD.Irecv(que, sz, MPI::INT, MASTER_RANK, 2);
-            this_thread::sleep_for (chrono::milliseconds(2000));
-            if (!r1.Test(status) || !r2.Test(status) || !r3.Test(status) || !r4.Test(status)) {
+            time(&check_point);
+            time(&cur_time);
+            while (cur_time - check_point < 3) {
+                masterDied = !r1.Test(status) || !r2.Test(status) || !r3.Test(status) || !r4.Test(status);
+                if (!masterDied) break;
+                time(&cur_time);
+            }
+            if (masterDied && wQue.size() != 0) {
                 cout << "Master died. Backup Master starts working..." << endl;
                 MASTER_RANK = BACKUP_MASTER;
                 assignMode();
                 break;
-            }
-            else if (recvRq.Test(status) && isExit) {
-                cout << "Backup Master completed." << endl;
-                MPI_Finalize();
-                exit(0);
             } else {
                 while (!wQue.empty()) {
                     wQue.pop();
@@ -247,7 +248,12 @@ void Master_Worker::assignMode() {
                         wQue.push(que[i]);
                 }
             }
-        }*/
+            if (recvRq.Test(status) && isExit) {
+                cout << "Backup Master completed." << endl;
+                MPI_Finalize();
+                exit(0);
+            }
+        }
     } else {
         //get work and send it back
         while(1){
@@ -297,7 +303,7 @@ void Master_Worker::MF_Send() {
         exit (0);
     } else {
         queue<int> tmpQ = wQue;
-        int que[sz];
+        int que[wPool.size()];
         for (int i=0; i<sz; i++) que[i] = -1;
         int i=0;
         while (!tmpQ.empty()) {
@@ -319,8 +325,7 @@ void F_Send(void *buf, int count, MPI_Datatype datatype, int dest, int tag, int 
         MPI_Finalize();
         exit (0);
     } else {
-        MPI::COMM_WORLD.Send(buf, count, datatype, dest, tag);
-        cout << "send success with rank: " << rank << " dest: " << dest << endl;
+        MPI::COMM_WORLD.Isend(buf, count, datatype, dest, tag);
     }
 }
 

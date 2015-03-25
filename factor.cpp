@@ -7,7 +7,7 @@
 
 using namespace std;
 
-#define NUM_SIZE 32
+#define NUM_SIZE 16 
 #define GRAIN 100000
 
 int n_size = 0;
