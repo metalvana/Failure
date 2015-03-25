@@ -14,7 +14,7 @@
 
 using namespace std;
 
-#define PVAL 0.6 
+#define PVAL 0.2
 
 //implementation of MPI_Run
 
@@ -139,24 +139,6 @@ void Master_Worker::assignMode() {
         while(recvCnt < n){
             /******* check timeList, see if any worker died *********/
             time_t curT; time(&curT);
-            if(curT - checkP > 1){
-                for(int i = 2; i < sz; i++){
-                    time_t tmpT = timeList[i];
-                    if(tmpT < checkP){
-                        //worker death detected, push the sent work back to wQue
-                        cout << "worker died with number: " << i << endl;
-                        wQue.push(workMap[i]);
-                        //set vWorker
-                        vWorker[i] = 0;
-                    }
-                }
-
-                /**************** Master Back Up***************************/
-                if (MASTER_RANK != BACKUP_MASTER)
-                    MF_Send();
-
-                checkP = curT;
-            }
             result_t* newR = (result_t*) malloc(result_sz);
             //see if received, if not->wait
             recvRq = MPI::COMM_WORLD.Irecv(newR, result_sz, MPI::BYTE, MPI::ANY_SOURCE, 1);
@@ -164,57 +146,76 @@ void Master_Worker::assignMode() {
             bool suc = false;
             time_t startT; time(&startT);
             curT = startT;
-            while(!suc && (curT-startT < 2)){
+            while(curT-startT < 2){
                 suc = recvRq.Test(status);
                 if(suc) break;
                 time(&curT);
-                this_thread::sleep_for (chrono::milliseconds(100));
             }
             if(!suc){
-                //assume all worker die, cout msg and exit
-                //check valid count;
-                int wCnt = 0;
+                recvRq.Cancel();
+                //assume all the worker within computation dead
                 for(int i = 2; i < sz; i++){
-                    if(vWorker[i]) wCnt++;
+                    //if(vWorker[i]) wCnt++;
+                    if(workMap[i] != -1 && vWorker[i]){
+                        //this worker dead
+                        cout << "this worker dead: " << i << " with work number: " << workMap[i] << endl;
+                        vWorker[i] = 0;
+                        //send the work back to workQue
+                        wQue.push(workMap[i]);
+                        workMap[i] = -1;
+                    }
                 }
-                if(wCnt) continue;
-                cout << "all workers died!" << endl;
-                MPI_Finalize();
-                exit(0);
             }
             else{
                 rList.push_back(newR);
                 recvCnt++;
                 int tmpTar = status.Get_source();
-                //check if tmpTar already died, if so, continue
-                if(!vWorker[tmpTar]) continue;
-                //see if work left
-                if(!wQue.empty()){
-                    tmpW = wPool[wQue.front()];
-                    int tmpTar = status.Get_source();
-                    int exit = 0;
-                    MPI::COMM_WORLD.Send(&exit, 1, MPI::INT, tmpTar, 0);
-                    MPI::COMM_WORLD.Send(tmpW, work_sz, MPI::BYTE, tmpTar, 1);
-                    time_t tmpT; time(&tmpT);
-                    timeList[tmpTar] = tmpT;
-                    workMap[tmpTar] = wQue.front();
-                    wQue.pop();
-                }
-                cout << "recvCnt: " << recvCnt << endl;
+                //update workMap to -1, name it as idle
+                workMap[tmpTar] = -1;
             }
+            //see if any work left, if yes, push to the return processor or next available processor
+            if(!wQue.empty()){
+                tmpW = wPool[wQue.front()];
+                int tmpTar = -1;
+                if(suc) tmpTar = status.Get_source();
+                else{//go through vWorker, find first available
+                    for(int i = 2; i < sz; i++){
+                        if(vWorker[i]){
+                            tmpTar = i; break;
+                        }
+                    }
+                }
+                if(tmpTar == -1){
+                    //no processor available, all workers dead, shout out and exit
+                    cout << "all workers died!! No one available!!! " << endl;
+                    MPI_Finalize();
+                    exit(0);
+                }
+                int exit = 0;
+                cout << "new tar: " << tmpTar << " with new work: " << wQue.front() << endl;
+                MPI::COMM_WORLD.Send(&exit, 1, MPI::INT, tmpTar, 0);
+                MPI::COMM_WORLD.Send(tmpW, work_sz, MPI::BYTE, tmpTar, 1);
+                time_t tmpT; time(&tmpT);
+                timeList[tmpTar] = tmpT;
+                workMap[tmpTar] = wQue.front();
+                wQue.pop();
+            }
+            /************* send backup to backup master *******************/
+            if (MASTER_RANK != BACKUP_MASTER)
+                MF_Send();
         }
         //send msgs to stop workers
         for(int i = 1; i < sz; i++){
-            if(vWorker[i]){
+            //if(vWorker[i]){
                 int exit = 1;
                 MPI::COMM_WORLD.Send(&exit, 1, MPI::INT, i, 0);
-            }
+            //}
         }
         result(rList, finalR);
         cout << "Processor " << rank << " completed." << endl;
     }
     else if (rank == BACKUP_MASTER) {
-        create();
+        /*create();
         Init();
         time_t check_point, cur_time;
         int que[sz];
@@ -246,7 +247,7 @@ void Master_Worker::assignMode() {
                         wQue.push(que[i]);
                 }
             }
-        }
+        }*/
     } else {
         //get work and send it back
         while(1){
@@ -314,10 +315,12 @@ void Master_Worker::MF_Send() {
 void F_Send(void *buf, int count, MPI_Datatype datatype, int dest, int tag, int rank)
 {
     if (random_fail(rank)) {
+        cout << "this rank should fail: " << rank << endl;
         MPI_Finalize();
         exit (0);
     } else {
         MPI::COMM_WORLD.Send(buf, count, datatype, dest, tag);
+        cout << "send success with rank: " << rank << " dest: " << dest << endl;
     }
 }
 
