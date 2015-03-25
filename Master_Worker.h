@@ -50,15 +50,16 @@ private:
     //work queue for sending
     queue<int> wQue;
     //vector act as map between workInd and time
-    vector<time_t> timeList;
+    time_t *timeList;
     //vector act as map between worker and computing work
-    vector<int> workMap;
+    int *workMap;
     //see which worker failed
-    vector<bool> vWorker;
+    int *vWorker;
 
     void directMode();
     void assignMode();
     void Init();
+    void MF_Send();
 };
 
 #endif
