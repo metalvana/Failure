@@ -51,8 +51,8 @@ void Master_Worker::Run(){
 }
 
 void Master_Worker::directMode() {
-    int tag=1;
-    vector<result_t*> rList;
+    /*int tag=1;
+    result_t *rList[wPool.size()];
     if(rank == MASTER_RANK){
         for(int i = 2; i < sz; i++){
             result_t* tmpR = (result_t*) malloc(result_sz);
@@ -79,7 +79,7 @@ void Master_Worker::directMode() {
         }
         result(rList, finalR);
         MPI::COMM_WORLD.Send(finalR, result_sz, MPI::BYTE, 0, tag);
-    }
+    }*/
     
 }
 
@@ -104,7 +104,10 @@ void Master_Worker::Init() {
 }
 
 void Master_Worker::assignMode() {
-    vector<result_t*> rList;
+    result_t *rList[wPool.size()];
+    for (int i=0; i<wPool.size(); i++) {
+        rList[i] = NULL;
+    }
     result_t* tmpR;
     work_t* tmpW;
     
@@ -139,7 +142,7 @@ void Master_Worker::assignMode() {
         while(recvCnt < n){
             /******* check timeList, see if any worker died *********/
             time_t curT; time(&curT);
-            result_t* newR = (result_t*) malloc(result_sz);
+            result_t *newR = (result_t*) malloc(result_sz);
             //see if received, if not->wait
             recvRq = MPI::COMM_WORLD.Irecv(newR, result_sz, MPI::BYTE, MPI::ANY_SOURCE, 1);
             //check request, if not received, wait
@@ -167,7 +170,8 @@ void Master_Worker::assignMode() {
                 }
             }
             else{
-                rList.push_back(newR);
+                cout << "recvCnt: " << recvCnt << endl;
+                rList[recvCnt] = newR;
                 recvCnt++;
                 int tmpTar = status.Get_source();
                 //update workMap to -1, name it as idle

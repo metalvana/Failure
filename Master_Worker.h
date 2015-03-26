@@ -32,7 +32,7 @@ protected:
     virtual void create() = 0;
     
     //master process the results after recieving from workers
-    virtual int result(vector<result_t*> &res, result_t* &tmpR) = 0;
+    virtual int result(result_t *res[], result_t* &tmpR) = 0;
     
     //distribute the works, and compute each portion of the list based on the rank number
     virtual result_t* compute(work_t* &work) = 0;

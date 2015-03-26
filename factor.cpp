@@ -56,11 +56,12 @@ public:
         cout << wPool.size() << " works created" << endl;
     };
 
-    int result(vector<result_t*> &res, result_t* &tmpR) {
+    int result(result_t *res[], result_t* &tmpR) {
         try {
             tmpR = new result_t();
             unsigned long index=0;
-            for (unsigned long i=0; i<res.size(); i++) {
+            for (unsigned long i=0; i<wPool.size(); i++) {
+                if (res[i] == NULL) continue;
                 for (unsigned long j=0; j<GRAIN; j++) {
                     if (res[i]->digits[j][0] == 0)
                         break;
