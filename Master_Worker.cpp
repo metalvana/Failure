@@ -101,15 +101,13 @@ void Master_Worker::Init() {
         workMap[i] = -1;
         vWorker[i] = 1;
     }
+    rList = (result_t**) malloc(result_sz*wPool.size());
 }
 
 void Master_Worker::assignMode() {
-    result_t *rList[wPool.size()];
-    for (int i=0; i<wPool.size(); i++) {
-        rList[i] = NULL;
-    }
-    result_t* tmpR;
-    work_t* tmpW;
+    result_t *tmpR;
+    work_t *tmpW;
+    result_t *newR;
     
     if (rank == MASTER_RANK) {
         if (MASTER_RANK != BACKUP_MASTER) {
@@ -139,10 +137,14 @@ void Master_Worker::assignMode() {
         time_t checkP;
         time(&checkP);
         int recvCnt = 0;
+        for (int i=0; i<wPool.size(); i++) {
+            if (rList[i] != NULL)
+               recvCnt++;
+        }
         while(recvCnt < n){
             /******* check timeList, see if any worker died *********/
             time_t curT; time(&curT);
-            result_t *newR = (result_t*) malloc(result_sz);
+            newR = (result_t*) malloc(result_sz);
             //see if received, if not->wait
             recvRq = MPI::COMM_WORLD.Irecv(newR, result_sz, MPI::BYTE, MPI::ANY_SOURCE, 1);
             //check request, if not received, wait
@@ -169,8 +171,7 @@ void Master_Worker::assignMode() {
                     }
                 }
             }
-            else{
-                cout << "recvCnt: " << recvCnt << endl;
+            else {
                 rList[recvCnt] = newR;
                 recvCnt++;
                 int tmpTar = status.Get_source();
@@ -226,17 +227,23 @@ void Master_Worker::assignMode() {
         bool masterDied = false;
         recvRq = MPI::COMM_WORLD.Irecv(&isExit, 1, MPI::INT, MASTER_RANK, 0);
         while (1) {
-            MPI::Request r1, r2, r3, r4;
+            MPI::Request r1, r2, r3, r4, r5;
             r1 = MPI::COMM_WORLD.Irecv(timeList, sz, MPI::INT, MASTER_RANK, 2);
             r2 = MPI::COMM_WORLD.Irecv(workMap, sz, MPI::INT, MASTER_RANK, 2);
             r3 = MPI::COMM_WORLD.Irecv(vWorker, sz, MPI::INT, MASTER_RANK, 2);
             r4 = MPI::COMM_WORLD.Irecv(que, sz, MPI::INT, MASTER_RANK, 2);
+            r5 = MPI::COMM_WORLD.Irecv(rList, wPool.size()*result_sz, MPI::BYTE, MASTER_RANK, 2);
             time(&check_point);
             time(&cur_time);
             while (cur_time - check_point < 3) {
-                masterDied = !r1.Test(status) || !r2.Test(status) || !r3.Test(status) || !r4.Test(status);
+                masterDied = !r1.Test(status) || !r2.Test(status) || !r3.Test(status) || !r4.Test(status) || !r5.Test(status);
                 if (!masterDied) break;
                 time(&cur_time);
+            }
+            if (recvRq.Test(status) && isExit) {
+                cout << "Backup Master completed." << endl;
+                MPI_Finalize();
+                exit(0);
             }
             if (masterDied && wQue.size() != 0) {
                 cout << "Master died. Backup Master starts working..." << endl;
@@ -251,11 +258,6 @@ void Master_Worker::assignMode() {
                     if (que[i] != -1)
                         wQue.push(que[i]);
                 }
-            }
-            if (recvRq.Test(status) && isExit) {
-                cout << "Backup Master completed." << endl;
-                MPI_Finalize();
-                exit(0);
             }
         }
     } else {

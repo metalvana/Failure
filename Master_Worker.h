@@ -27,6 +27,7 @@ public:
 protected:
     vector<work_t*> wPool;
     result_t* finalR;
+    result_t **rList;
     
     //construct pList and wPool based on the input value
     virtual void create() = 0;
