@@ -14,7 +14,7 @@
 
 using namespace std;
 
-#define PVAL 0.9
+#define PVAL 0.6
 
 //implementation of MPI_Run
 
@@ -210,10 +210,8 @@ void Master_Worker::assignMode() {
         }
         //send msgs to stop workers
         for(int i = 1; i < sz; i++){
-            //if(vWorker[i]){
-                int exit = 1;
-                MPI::COMM_WORLD.Send(&exit, 1, MPI::INT, i, 0);
-            //}
+            int exit = 1;
+            MPI::COMM_WORLD.Send(&exit, 1, MPI::INT, i, 0);
         }
         result(rList, finalR);
         cout << "Processor " << rank << " completed." << endl;
@@ -238,12 +236,12 @@ void Master_Worker::assignMode() {
             while (cur_time - check_point < 3) {
                 masterDied = !r1.Test(status) || !r2.Test(status) || !r3.Test(status) || !r4.Test(status) || !r5.Test(status);
                 if (!masterDied) break;
+                if (recvRq.Test(status) && isExit) {
+                    cout << "Backup Master completed." << endl;
+                    MPI_Finalize();
+                    exit(0);
+                }
                 time(&cur_time);
-            }
-            if (recvRq.Test(status) && isExit) {
-                cout << "Backup Master completed." << endl;
-                MPI_Finalize();
-                exit(0);
             }
             if (masterDied && wQue.size() != 0) {
                 cout << "Master died. Backup Master starts working..." << endl;
@@ -275,7 +273,6 @@ void Master_Worker::assignMode() {
             tmpTar = status.Get_source();
             tmpR = compute(newW);
             F_Send(tmpR, result_sz, MPI::BYTE, tmpTar, 1, rank);
-            //MPI::COMM_WORLD.Isend(tmpR, result_sz, MPI::BYTE, tmpTar, 1);
         }
     }
 }
@@ -305,6 +302,7 @@ bool Master_Worker::isMaster() {
 // Master fail send
 void Master_Worker::MF_Send() {
     if (random_fail(rank)) {
+        cout << "master should died." << endl;
         MPI_Finalize();
         exit (0);
     } else {
@@ -316,10 +314,11 @@ void Master_Worker::MF_Send() {
             que[i++] = tmpQ.front();
             tmpQ.pop();
         }
-        MPI::COMM_WORLD.Send(timeList, sz, MPI::INT, BACKUP_MASTER , 2);
-        MPI::COMM_WORLD.Send(workMap, sz, MPI::INT, BACKUP_MASTER , 2);
-        MPI::COMM_WORLD.Send(vWorker, sz, MPI::INT, BACKUP_MASTER , 2);
-        MPI::COMM_WORLD.Send(que, sz, MPI::INT, BACKUP_MASTER , 2);
+        MPI::COMM_WORLD.Isend(timeList, sz, MPI::INT, BACKUP_MASTER , 2);
+        MPI::COMM_WORLD.Isend(workMap, sz, MPI::INT, BACKUP_MASTER , 2);
+        MPI::COMM_WORLD.Isend(vWorker, sz, MPI::INT, BACKUP_MASTER , 2);
+        MPI::COMM_WORLD.Isend(que, sz, MPI::INT, BACKUP_MASTER , 2);
+        MPI::COMM_WORLD.Isend(rList, wPool.size()*result_sz, MPI::BYTE, BACKUP_MASTER, 2);
     }
 }
 
@@ -340,7 +339,7 @@ bool random_fail(int rank){
     /*auto timePnt = chrono::high_resolution_clock::now();
     auto ticks = chrono::duration_cast<chrono::microseconds>(timePnt-0);
     cout << "time: " << ticks << endl;*/
-    srand(time(0)*rank*171);
+    srand(time(0)*rank*163);
     double tmpV = (double)rand()/RAND_MAX;
     return (tmpV > PVAL);
 }
